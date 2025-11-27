@@ -1,91 +1,105 @@
 import { cookies } from 'next/headers'
 import { getUserFromToken } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import Link from 'next/link'
-import { notFound } from 'next/navigation'
 import ComplaintActions from './actions'
+import CommentsSection from './comments'
+import Link from 'next/link'
 
 export default async function ComplaintDetailsPage({ params }: { params: Promise<{ id: string }> }) {
-    const { id } = await params
     const cookieStore = await cookies()
     const token = cookieStore.get('token')?.value
     const user = token ? await getUserFromToken(token) : null
+    const { id } = await params
 
-    if (!user) return null
+    if (!user) {
+        return <div>Unauthorized</div>
+    }
 
     const complaint = await prisma.complaint.findUnique({
         where: { id },
         include: {
+            complainant: true,
             attachments: true,
-            auditLogs: {
-                include: { actor: true },
-                orderBy: { createdAt: 'desc' }
+            assignedOfficer: true,
+            assignedDept: true,
+            comments: {
+                include: {
+                    author: {
+                        select: { name: true, role: true }
+                    }
+                },
+                orderBy: { createdAt: 'asc' }
             }
         }
     })
 
-    if (!complaint) notFound()
+    if (!complaint) {
+        return <div>Complaint not found</div>
+    }
 
-    // Ensure user is authorized to view (Complainant, Assigned Officer, or Admin)
+    // Access control
     const isComplainant = complaint.complainantId === user.id
-    const isAssignedOfficer = user.role === 'DEPT_OFFICER' && user.departmentId === complaint.assignedDeptId
+    const isAssignedOfficer = complaint.assignedOfficerId === user.id
     const isAdmin = user.role === 'ADMIN'
+    const isDeptOfficer = user.role === 'DEPT_OFFICER' && complaint.assignedDeptId === user.departmentId
 
-    if (!isComplainant && !isAssignedOfficer && !isAdmin) {
+    if (!isComplainant && !isAssignedOfficer && !isAdmin && !isDeptOfficer) {
         return <div>Unauthorized</div>
     }
 
     return (
         <div style={{ maxWidth: '800px', margin: '0 auto' }}>
             <div style={{ marginBottom: '1rem' }}>
-                <Link href="/dashboard/my-complaints" style={{ color: 'var(--accent)', fontSize: '0.875rem' }}>
-                    ← Back to List
+                <Link href="/dashboard" style={{ fontSize: '0.875rem', color: 'var(--muted-foreground)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    ← Back to Dashboard
                 </Link>
             </div>
 
-            <div className="card" style={{ marginBottom: '1.5rem' }}>
+            <div className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                     <div>
                         <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>{complaint.title}</h1>
-                        <div style={{ display: 'flex', gap: '1rem', color: 'var(--muted-foreground)', fontSize: '0.875rem' }}>
-                            <span>ID: {complaint.id}</span>
-                            <span>Category: {complaint.category}</span>
-                            <span>Date: {new Date(complaint.createdAt).toLocaleString()}</span>
+                        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.875rem', color: 'var(--muted-foreground)' }}>
+                            <span>{new Date(complaint.createdAt).toLocaleString()}</span>
+                            <span>•</span>
+                            <span>{complaint.category}</span>
                         </div>
                     </div>
                     <span style={{
-                        padding: '0.5rem 1rem',
+                        padding: '0.25rem 0.75rem',
                         borderRadius: '9999px',
+                        fontSize: '0.875rem',
                         fontWeight: '600',
                         backgroundColor: getStatusColor(complaint.status),
                         color: 'white'
                     }}>
-                        {complaint.status}
+                        {complaint.status.replace('_', ' ')}
                     </span>
                 </div>
 
                 <div style={{ marginBottom: '2rem' }}>
-                    <h3 style={{ fontWeight: '600', marginBottom: '0.5rem' }}>Description</h3>
-                    <p style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>{complaint.description}</p>
+                    <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem' }}>Description</h3>
+                    <p style={{ lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>{complaint.description}</p>
                 </div>
 
                 {complaint.attachments.length > 0 && (
                     <div style={{ marginBottom: '2rem' }}>
-                        <h3 style={{ fontWeight: '600', marginBottom: '0.5rem' }}>Attachments</h3>
+                        <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem' }}>Attachments</h3>
                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                            {complaint.attachments.map((file: any) => (
+                            {complaint.attachments.map(file => (
                                 <a
                                     key={file.id}
                                     href={file.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        padding: '0.5rem',
+                                        padding: '0.5rem 1rem',
                                         border: '1px solid var(--border)',
                                         borderRadius: 'var(--radius)',
-                                        fontSize: '0.875rem'
+                                        fontSize: '0.875rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem'
                                     }}
                                 >
                                     📄 {file.name}
@@ -95,17 +109,35 @@ export default async function ComplaintDetailsPage({ params }: { params: Promise
                     </div>
                 )}
 
-                {complaint.resolutionSummary && (
-                    <div style={{ marginTop: '2rem', padding: '1rem', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 'var(--radius)' }}>
-                        <h3 style={{ fontWeight: '600', color: '#166534', marginBottom: '0.5rem' }}>Resolution Summary</h3>
-                        <p style={{ color: '#15803d' }}>{complaint.resolutionSummary}</p>
+                <div style={{
+                    padding: '1rem',
+                    backgroundColor: 'var(--secondary)',
+                    borderRadius: 'var(--radius)',
+                    fontSize: '0.875rem',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '1rem'
+                }}>
+                    <div>
+                        <div style={{ color: 'var(--muted-foreground)', marginBottom: '0.25rem' }}>Submitted By</div>
+                        <div style={{ fontWeight: '500' }}>{complaint.complainant.name}</div>
                     </div>
-                )}
+                    <div>
+                        <div style={{ color: 'var(--muted-foreground)', marginBottom: '0.25rem' }}>Assigned Department</div>
+                        <div style={{ fontWeight: '500' }}>{complaint.assignedDept?.name || 'Pending Assignment'}</div>
+                    </div>
+                    {complaint.assignedOfficer && (
+                        <div>
+                            <div style={{ color: 'var(--muted-foreground)', marginBottom: '0.25rem' }}>Assigned Officer</div>
+                            <div style={{ fontWeight: '500' }}>{complaint.assignedOfficer.name}</div>
+                        </div>
+                    )}
+                </div>
 
-                {complaint.internalNotes && (isAssignedOfficer || isAdmin) && (
-                    <div style={{ marginTop: '2rem', padding: '1rem', backgroundColor: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 'var(--radius)' }}>
-                        <h3 style={{ fontWeight: '600', color: '#9a3412', marginBottom: '0.5rem' }}>Internal Notes</h3>
-                        <p style={{ color: '#c2410c' }}>{complaint.internalNotes}</p>
+                {complaint.resolutionSummary && (
+                    <div style={{ marginTop: '2rem', padding: '1.5rem', backgroundColor: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: 'var(--radius)' }}>
+                        <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#16a34a' }}>Resolution</h3>
+                        <p>{complaint.resolutionSummary}</p>
                     </div>
                 )}
             </div>
@@ -117,23 +149,11 @@ export default async function ComplaintDetailsPage({ params }: { params: Promise
                 isAdmin={isAdmin}
             />
 
-            <div className="card" style={{ marginTop: '1.5rem' }}>
-                <h3 style={{ fontWeight: '600', marginBottom: '1rem' }}>History</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {complaint.auditLogs.map((log: any) => (
-                        <div key={log.id} style={{ display: 'flex', gap: '1rem', fontSize: '0.875rem' }}>
-                            <div style={{ color: 'var(--muted-foreground)', minWidth: '150px' }}>
-                                {new Date(log.createdAt).toLocaleString()}
-                            </div>
-                            <div>
-                                <span style={{ fontWeight: '600' }}>{log.action}</span>
-                                <span style={{ color: 'var(--muted-foreground)' }}> by {log.actor.name}</span>
-                                {log.details && <div style={{ marginTop: '0.25rem' }}>{log.details}</div>}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
+            <CommentsSection
+                complaintId={complaint.id}
+                initialComments={complaint.comments as any}
+                currentUserEmail={user.email}
+            />
         </div>
     )
 }

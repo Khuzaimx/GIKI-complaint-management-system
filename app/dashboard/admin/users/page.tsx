@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { getUserFromToken } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import UserManagement from './user-management'
 
 export default async function UserManagementPage() {
     const cookieStore = await cookies()
@@ -11,37 +12,20 @@ export default async function UserManagementPage() {
         return <div>Unauthorized</div>
     }
 
-    const users = await prisma.user.findMany({
-        orderBy: { name: 'asc' },
-        include: { department: true }
-    })
+    const [users, departments] = await Promise.all([
+        prisma.user.findMany({
+            orderBy: { name: 'asc' },
+            include: { department: true }
+        }),
+        prisma.department.findMany({
+            orderBy: { name: 'asc' }
+        })
+    ])
 
     return (
         <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>User Management</h1>
-
-            <div className="card">
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
-                            <th style={{ padding: '0.75rem' }}>Name</th>
-                            <th style={{ padding: '0.75rem' }}>Email</th>
-                            <th style={{ padding: '0.75rem' }}>Role</th>
-                            <th style={{ padding: '0.75rem' }}>Department</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {users.map(u => (
-                            <tr key={u.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                                <td style={{ padding: '0.75rem' }}>{u.name}</td>
-                                <td style={{ padding: '0.75rem' }}>{u.email}</td>
-                                <td style={{ padding: '0.75rem' }}>{u.role}</td>
-                                <td style={{ padding: '0.75rem' }}>{u.department?.name || '-'}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold', marginBottom: '2rem' }}>User Management</h1>
+            <UserManagement initialUsers={users} departments={departments} />
         </div>
     )
 }

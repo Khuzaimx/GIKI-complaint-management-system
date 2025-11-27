@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { getUserFromToken } from '@/lib/auth'
 import styles from './dashboard.module.css'
+import DashboardLayoutClient from './layout-client'
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
     const cookieStore = await cookies()
@@ -13,36 +14,37 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         return <div>Unauthorized</div>
     }
 
+    const sidebarContent = (
+        <>
+            <div className={styles.logo}>GIKOmplain</div>
+            <nav className={styles.nav}>
+                <Link href="/dashboard" className={styles.navItem}>Overview</Link>
+
+                {user.role === 'STUDENT' || user.role === 'FACULTY' || user.role === 'STAFF' ? (
+                    <>
+                        <Link href="/dashboard/submit" className={styles.navItem}>Submit Complaint</Link>
+                        <Link href="/dashboard/my-complaints" className={styles.navItem}>My Complaints</Link>
+                    </>
+                ) : null}
+
+                {user.role === 'DEPT_OFFICER' || user.role === 'ADMIN' ? (
+                    <Link href="/dashboard/department" className={styles.navItem}>Department Queue</Link>
+                ) : null}
+
+                {user.role === 'ADMIN' && (
+                    <Link href="/dashboard/admin" className={styles.navItem}>Admin Console</Link>
+                )}
+            </nav>
+            <div className={styles.userProfile}>
+                <div className={styles.userName}>{user.name}</div>
+                <div className={styles.userRole}>{user.role}</div>
+            </div>
+        </>
+    )
+
     return (
-        <div className={styles.layout}>
-            <aside className={styles.sidebar}>
-                <div className={styles.logo}>GIKOmplain</div>
-                <nav className={styles.nav}>
-                    <Link href="/dashboard" className={styles.navItem}>Overview</Link>
-
-                    {user.role === 'STUDENT' || user.role === 'FACULTY' || user.role === 'STAFF' ? (
-                        <>
-                            <Link href="/dashboard/submit" className={styles.navItem}>Submit Complaint</Link>
-                            <Link href="/dashboard/my-complaints" className={styles.navItem}>My Complaints</Link>
-                        </>
-                    ) : null}
-
-                    {user.role === 'DEPT_OFFICER' || user.role === 'ADMIN' ? (
-                        <Link href="/dashboard/department" className={styles.navItem}>Department Queue</Link>
-                    ) : null}
-
-                    {user.role === 'ADMIN' && (
-                        <Link href="/dashboard/admin" className={styles.navItem}>Admin Console</Link>
-                    )}
-                </nav>
-                <div className={styles.userProfile}>
-                    <div className={styles.userName}>{user.name}</div>
-                    <div className={styles.userRole}>{user.role}</div>
-                </div>
-            </aside>
-            <main className={styles.main}>
-                {children}
-            </main>
-        </div>
+        <DashboardLayoutClient sidebarContent={sidebarContent}>
+            {children}
+        </DashboardLayoutClient>
     )
 }

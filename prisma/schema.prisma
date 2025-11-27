@@ -22,6 +22,7 @@ model User {
   complaints    Complaint[] @relation("Complainant")
   assignedComplaints Complaint[] @relation("Officer")
   auditLogs     AuditLog[]
+  comments      Comment[]
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -52,6 +53,7 @@ model Complaint {
 
   attachments   Attachment[]
   auditLogs     AuditLog[]
+  comments      Comment[]
   
   resolutionSummary String?
   internalNotes     String?
@@ -83,4 +85,18 @@ model AuditLog {
   complaint   Complaint? @relation(fields: [complaintId], references: [id])
   
   createdAt   DateTime  @default(now())
+}
+
+model Comment {
+  id          String    @id @default(cuid())
+  content     String
+  
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id])
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
